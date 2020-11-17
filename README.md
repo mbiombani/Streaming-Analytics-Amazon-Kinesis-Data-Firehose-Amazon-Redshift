@@ -1,6 +1,7 @@
-# Streaming Data Analytics with Amazon Kinesis Data Firehose, Amazon Redshift, and Amazon QuickSight
+# Analyse de données en continu avec Amazon Kinesis Data Firehose, Amazon Redshift et Amazon QuickSight
 
-Project files for the accompanying post, [Streaming Data Analytics with Amazon Kinesis Data Firehose, Amazon Redshift, and Amazon QuickSight](https://tinyurl.com/streamingwarehouse). See post for the most up-to-date instructions for using the source code.
+Fichiers de projet pour le post d'accompagnement, [Streaming Data Analytics with Amazon Kinesis Data Firehose, Amazon Redshift, and Amazon QuickSight](https://tinyurl.com/streamingwarehouse). Voir le post pour les instructions les plus récentes concernant l'utilisation du code source.
+
 
 ## Architecture
 
