@@ -4,4 +4,4 @@ Project files for the accompanying post, [Streaming Data Analytics with Amazon K
 
 ## Architecture
 
-![Architecture](Streaming-Kinesis-Redshift.png)
+![Architecture](Archi.png)
