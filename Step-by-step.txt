@@ -1,0 +1,134 @@
+export AWS_DEFAULT_REGION=us-east-1
+REDSHIFT_USERNAME=awsuser
+REDSHIFT_PASSWORD=5up3r53cr3tPa55w0rd
+
+# Create resources
+aws cloudformation create-stack \
+    –stack-name redshift-stack \
+    –template-body file://cloudformation/redshift.yml \
+    –parameters ParameterKey=MasterUsername,ParameterValue=${REDSHIFT_USERNAME} \
+                 ParameterKey=MasterUserPassword,ParameterValue=${REDSHIFT_PASSWORD} \
+                 ParameterKey=InboundTraffic,ParameterValue=$(curl ifconfig.me -s)/32 \
+    –capabilities CAPABILITY_NAMED_IAM
+
+# Wait for first stack to complete
+aws cloudformation create-stack \
+    –stack-name kinesis-firehose-stack \
+    –template-body file://cloudformation/kinesis-firehose.yml \
+    –parameters ParameterKey=MasterUserPassword,ParameterValue=${REDSHIFT_PASSWORD} \
+    –capabilities CAPABILITY_NAMED_IAM
+
+
+# Get data bucket name
+DATA_BUCKET=$(aws cloudformation describe-stacks \
+    –stack-name redshift-stack \
+    | jq -r '.Stacks[].Outputs[] | select(.OutputKey == "DataBucket") | .OutputValue')
+
+echo $DATA_BUCKET
+
+# Copy data
+aws s3 cp data/history.csv s3://${DATA_BUCKET}/history/history.csv
+aws s3 cp data/location.csv s3://${DATA_BUCKET}/location/location.csv
+aws s3 cp data/manufacturer.csv s3://${DATA_BUCKET}/manufacturer/manufacturer.csv
+aws s3 cp data/sensor.csv s3://${DATA_BUCKET}/sensor/sensor.csv
+aws s3 cp data/sensors.csv s3://${DATA_BUCKET}/sensors/sensors.csv
+
+
+— ** MUST FIRST CHANGE your_bucket_name and cluster_permissions_role_arn **
+
+— sensor schema
+SET search_path = sensor;
+
+— Copy sample data to tables from S3
+TRUNCATE TABLE history;
+COPY history (id, serviced, action, technician_id, notes)
+    FROM 's3://your_bucket_name/history/'
+    CREDENTIALS 'aws_iam_role=cluster_permissions_role_arn'
+    CSV IGNOREHEADER 1;
+
+TRUNCATE TABLE location;
+COPY location (id, long, lat, description)
+    FROM 's3://your_bucket_name/location/'
+    CREDENTIALS 'aws_iam_role=cluster_permissions_role_arn'
+    CSV IGNOREHEADER 1;
+
+TRUNCATE TABLE sensor;
+COPY sensor (id, guid, mac, sku, upc, active, notes)
+    FROM 's3://your_bucket_name/sensor/'
+    CREDENTIALS 'aws_iam_role=cluster_permissions_role_arn'
+    CSV IGNOREHEADER 1;
+
+TRUNCATE TABLE manufacturer;
+COPY manufacturer (id, name, website, notes)
+    FROM 's3://your_bucket_name/manufacturer/'
+    CREDENTIALS 'aws_iam_role=cluster_permissions_role_arn'
+    CSV IGNOREHEADER 1;
+
+TRUNCATE TABLE sensors;
+COPY sensors (sensor_id, manufacturer_id, location_id, history_id, message_guid)
+    FROM 's3://your_bucket_name/sensors/'
+    CREDENTIALS 'aws_iam_role=cluster_permissions_role_arn'
+    CSV IGNOREHEADER 1;
+
+SELECT COUNT(*) FROM history; — 30
+SELECT COUNT(*) FROM location; — 6
+SELECT COUNT(*) FROM sensor; — 6
+SELECT COUNT(*) FROM manufacturer; —1
+SELECT COUNT(*) FROM sensors; — 30
+
+
+
+# Install required Python packages
+python3 -m pip install –user -r scripts/requirements.txt
+
+# Set default AWS Region for script
+export AWS_DEFAULT_REGION=us-east-1
+
+# Execute script in foreground
+python3 ./scripts/kinesis_put_test_msg.py
+
+
+
+
+# Install required Python packages
+python3 -m pip install –user -r scripts/requirements.txt
+
+# Set default AWS Region for script
+export AWS_DEFAULT_REGION=us-east-1
+
+# Option #1: Execute script in foreground
+python3 ./scripts/kinesis_put_streaming_data.py
+
+# Option #2: execute script in background
+nohup python3 -u ./scripts/kinesis_put_streaming_data.py > output.log 2>&1 </dev/null &
+
+# Check that the process is running
+ps -aux | grep 'python3 -u ./scripts/kinesis_put_streaming_data.py'
+
+# Wait 1-2 minutes, then check output to confirm script is working
+cat output.log
+
+
+
+#Pour supprimer les ressources créées pour cette publication, utilisez la série suivante de commandes AWS CLI.
+# Get data bucket name
+DATA_BUCKET=$(aws cloudformation describe-stacks \
+    --stack-name redshift-stack \
+    | jq -r '.Stacks[].Outputs[] | select(.OutputKey == "DataBucket") | .OutputValue')
+
+echo ${DATA_BUCKET}
+
+# Get log bucket name
+LOG_BUCKET=$(aws cloudformation describe-stacks \
+    --stack-name redshift-stack \
+    | jq -r '.Stacks[].Outputs[] | select(.OutputKey == "LogBucket") | .OutputValue')
+
+echo ${LOG_BUCKET}
+
+# Delete demonstration resources
+python3 ./scripts/delete_buckets.py
+
+aws cloudformation delete-stack --stack-name kinesis-firehose-stack
+
+# Wait for first stack to be deleted
+aws cloudformation delete-stack --stack-name redshift-stack
